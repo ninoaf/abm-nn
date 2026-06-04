@@ -7,8 +7,6 @@ https://doi.org/10.1140/epjds/s13688-025-00616-z
 
 The repository implements **ABM-informed neural networks**: neural ODEs whose right-hand sides decompose into **self dynamics** and **restricted graph interactions**, with inductive biases (conservation laws, nonnegativity, etc.) taken from agent-based and mean-field models. Case studies mirror the paper: Hamiltonian baseline, SIR on graphs, analytical GLV recovery, and macroeconomic GLV with latent channels.
 
-LaTeX source: [`main.tex`](main.tex).
-
 ---
 
 ## Installation
@@ -101,9 +99,9 @@ Artifacts are written relative to the working directory or script location:
 | [`code/GLV_learning_micro_explicit.py`](code/GLV_learning_micro_explicit.py) | Recover explicit GLV growth rates (Three-Body case study) |
 | [`code/GLV_learning_micro_gdp_extended_universal_out.py`](code/GLV_learning_micro_gdp_extended_universal_out.py) | Shared-parameter GLV + macro latent ODE on real GDP data |
 
-**Paper figures reproduced by these scripts** (see `main.tex` comments for the exact runs):
+**Example experiments** (related to figures in the paper; see `main.tex` comments for runs used during writing—your results may differ slightly):
 
-| Script | Paper figure(s) |
+| Script | Related paper figure(s) |
 |--------|-----------------|
 | `hnn_mass_spring_demo.py` | Fig. neural-ODE vs HNN (`figs/spring-4.pdf`, export from script PNGs) |
 | `epidemic_demo_macro.py` | Appendix Fig. macro SIR training |
@@ -164,11 +162,11 @@ Adam, `lr=1e-3`, 2000 epochs. After training, both models are rolled out from IC
 - `neuralode_vs_hnn_side_by_side.png`
 - `mse_vs_time.png`
 
-### Paper reproduction
+### Example: running the experiment
 
-**Figure:** Introduction, HNN vs Neural ODE on mass–spring (`fig:neural-ode-vs-hnn`).
+**Related figure:** Introduction, HNN vs Neural ODE on mass–spring (`fig:neural-ode-vs-hnn`).
 
-No CLI flags; hyperparameters are fixed in `TrainingConfig` inside the script (aligned with the paper text):
+No CLI flags; hyperparameters are fixed in `TrainingConfig` inside the script (defaults below are those used in the manuscript):
 
 | Setting | Value |
 |---------|-------|
@@ -183,7 +181,7 @@ No CLI flags; hyperparameters are fixed in `TrainingConfig` inside the script (a
 uv run python code/hnn_mass_spring_demo.py
 ```
 
-The paper PDF `figs/spring-4.pdf` was produced from the side-by-side phase-space panel (`plots/neuralode_vs_hnn_side_by_side.png`); convert or compose manually if you need the exact layout.
+The manuscript figure `figs/spring-4.pdf` can be assembled from the side-by-side phase-space panel (`plots/neuralode_vs_hnn_side_by_side.png`); convert or compose manually as needed.
 
 ---
 
@@ -246,11 +244,11 @@ Curriculum: horizon grows from `horizon_base` by `horizon_increment` every `hori
 
 Checkpoints save `phi1`, `phi2`, `adjacency`, `gamma` under `code/experiments/<exp_name>_<timestamp>/macro_rhs.ckpt`.
 
-### Paper reproduction — training (`epidemic_demo_macro.py`)
+### Example: training run (`epidemic_demo_macro.py`)
 
-**Figure:** Appendix macro SIR training (`fig:macro-sir-training`).
+**Related figure:** Appendix macro SIR training (`fig:macro-sir-training`).
 
-| Parameter | Paper value |
+| Parameter | Example setting |
 |-----------|-------------|
 | Graph | Erdős–Rényi $n{=}100$, $p{=}0.05$ |
 | SIR truth | $\beta{=}0.4$, $\gamma{=}0.2$ |
@@ -261,7 +259,7 @@ Checkpoints save `phi1`, `phi2`, `adjacency`, `gamma` under `code/experiments/<e
 | Regularizers | $\lambda_{\phi_1,\mathrm{axis}}{=}\lambda_{\phi_2,0}{=}1$, warmup 100 epochs |
 | Seed | `7` |
 
-Most values are script defaults; explicit paper command:
+Most values are script defaults; example command:
 
 ```bash
 uv run python code/epidemic_demo_macro.py \
@@ -301,9 +299,9 @@ Loads a trained checkpoint and evaluates on **new** graphs (different $n,p$) wit
 
 **Intervention (optional):** between `restrict_time` and `restrict_end_time`, a fraction `restrict_drop_fraction` of each node’s outgoing edges is zeroed (`mask_adjacency_per_node`), modeling social distancing while $\phi_1,\phi_2$ stay fixed.
 
-### Paper reproduction — OOS (`epidemic_demo_macro_out_of_sample.py`)
+### Example: out-of-sample evaluation (`epidemic_demo_macro_out_of_sample.py`)
 
-**Figure:** Main-text OOS SIR (`fig:macro-sir-model-out-of-sample`). Uses a **trained** `macro_rhs.ckpt` (from the training command above or your own run). Evaluation ground truth uses $\beta{=}0.3$, $\gamma{=}0.2$ (caption); architecture must match training (`hidden_dim=32`, `num_hidden=3`).
+**Related figure:** Main-text OOS SIR (`fig:macro-sir-model-out-of-sample`). Uses a **trained** `macro_rhs.ckpt` (from the training example above or your own run). Evaluation ground truth uses $\beta{=}0.3$, $\gamma{=}0.2$ (as in the figure caption); architecture should match training (`hidden_dim=32`, `num_hidden=3`).
 
 | Panel | Settings |
 |-------|----------|
@@ -323,7 +321,7 @@ uv run python code/epidemic_demo_macro_out_of_sample.py \
   --restrict_drop_fraction 0.9
 ```
 
-Replace `<timestamp>` with your experiment folder name (e.g. `26_09_2025_17:09` in `main.tex`).
+Replace `<timestamp>` with your experiment folder name.
 
 ---
 
@@ -354,11 +352,11 @@ $$
 
 Identical synthetic pipeline to `code/epidemic_demo_macro.py`. Use when studying **interpretable functionals** vs fully hard-wired SIR wiring (Appendix functional-learning figures in the paper).
 
-### Paper reproduction
+### Example: running the experiment
 
-**Figure:** Appendix functional SIR / separate learning rates (`fig:SI-separate-lr-training`). Same graph and SIR simulation as section 2; $F$ is fixed to $-\psi_1$, $G,H$ learned with higher LR; conservation penalty $\lambda_{\mathrm{cons}}{=}10$.
+**Related figure:** Appendix functional SIR / separate learning rates (`fig:SI-separate-lr-training`). Same graph and SIR simulation as section 2; $F$ is fixed to $-\psi_1$, $G,H$ learned with higher LR; conservation penalty $\lambda_{\mathrm{cons}}{=}10$.
 
-| Parameter | Paper / appendix text |
+| Parameter | Example setting |
 |-----------|------------------------|
 | Graph & SIR | $n{=}100$, $p{=}0.05$, $\beta{=}0.4$, $\gamma{=}0.2$, $t_{\max}{=}30$, $\Delta t{=}0.1$ |
 | Epochs | 700 |
@@ -391,7 +389,7 @@ uv run python code/epidemic_demo_macro_functionals.py \
   --exp_name macro_sir_functionals
 ```
 
-Optional (not required for the published figure): `--pretrain_coefficients` to warm-start $G,H$ on the mass-conservation penalty.
+Optional: `--pretrain_coefficients` to warm-start $G,H$ on the mass-conservation penalty.
 
 ---
 
@@ -432,11 +430,11 @@ AdamW + optional CyclicLR / CosineAnnealing; curriculum expands by `curriculum_i
 
 **Synthetic** initial vector $X_0 = (100,2,5,1,8)$; no external files. Writes `experiments/GLV_learning_micro_<timestamp>/` (trajectory, $r_i$ convergence plots).
 
-### Paper reproduction
+### Example: running the experiment
 
-**Figure:** Appendix three-body GLV (`fig:three-body-explicit`). Train only on $t \in [0,50]$; evaluate rollout to $t_{\max}{=}250$.
+**Related figure:** Appendix three-body GLV (`fig:three-body-explicit`). Train only on $t \in [0,50]$; evaluate rollout to $t_{\max}{=}250$.
 
-| Parameter | Paper value |
+| Parameter | Example setting |
 |-----------|-------------|
 | Epochs | 500 |
 | LR / schedule | `5e-4`, CyclicLR max `2e-2`, step 75 |
@@ -461,7 +459,7 @@ uv run python code/GLV_learning_micro_explicit.py \
   --exp-prefix GLV_learning_micro
 ```
 
-Outputs: `experiments/GLV_learning_micro_<timestamp>/trajectory.png`, `r_progress.png` (copy to `figs/glv_trajectory.png`, `figs/glv_r_progress.png` for the paper if needed).
+Outputs: `experiments/GLV_learning_micro_<timestamp>/trajectory.png`, `r_progress.png` (copy to `figs/` for your own figures if needed).
 
 ---
 
@@ -515,11 +513,11 @@ Optional **teacher-forcing pretrain** matches finite-difference targets of $(\do
 - GDP normalized by 1995 level; top `--top-n` economies by GDP at `--end-year`.
 - Bundled raw tables also under `data_cache/` and `data/gdp_fixed_1970_2023.json`.
 
-### Paper reproduction
+### Example: running the experiment
 
-**Figure:** Main-text macro GDP + $A$ (`fig:macro-traj-interaction`). Train on years before 2021; plot through 2024 (holdout from 2021). Command matches `main.tex`.
+**Related figure:** Main-text macro GDP + $A$ (`fig:macro-traj-interaction`). Train on years before 2021; plot through 2024 (holdout from 2021). Command is similar to the run noted in `main.tex`.
 
-| Parameter | Paper value |
+| Parameter | Example setting |
 |-----------|-------------|
 | Data | 1995–2024, top 10 economies |
 | Holdout | `--train-cut-year 2021` |
@@ -551,7 +549,7 @@ uv run python code/GLV_learning_micro_gdp_extended_universal_out.py \
   --preview-interval 50
 ```
 
-Outputs: `experiments/GLV_learning_micro_gdp_extended_out_run_<timestamp>/` (`trajectory.png`, `A_matrix.png`, `beta_history.png`, `command.txt`). Copy figures to `figs/macro_trajectory.png` and `figs/macro_A_matrix.png` for LaTeX if needed.
+Outputs: `experiments/GLV_learning_micro_gdp_extended_out_run_<timestamp>/` (`trajectory.png`, `A_matrix.png`, `beta_history.png`, `command.txt`). Copy figures to `figs/` for your own builds if needed.
 
 ---
 
