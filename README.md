@@ -101,6 +101,17 @@ Artifacts are written relative to the working directory or script location:
 | [`code/GLV_learning_micro_explicit.py`](code/GLV_learning_micro_explicit.py) | Recover explicit GLV growth rates (Three-Body case study) |
 | [`code/GLV_learning_micro_gdp_extended_universal_out.py`](code/GLV_learning_micro_gdp_extended_universal_out.py) | Shared-parameter GLV + macro latent ODE on real GDP data |
 
+**Paper figures reproduced by these scripts** (see `main.tex` comments for the exact runs):
+
+| Script | Paper figure(s) |
+|--------|-----------------|
+| `hnn_mass_spring_demo.py` | Fig. neural-ODE vs HNN (`figs/spring-4.pdf`, export from script PNGs) |
+| `epidemic_demo_macro.py` | Appendix Fig. macro SIR training |
+| `epidemic_demo_macro_out_of_sample.py` | Fig. macro SIR OOS + intervention |
+| `epidemic_demo_macro_functionals.py` | Appendix Fig. separate-LR / functional SIR |
+| `GLV_learning_micro_explicit.py` | Appendix Fig. three-body GLV |
+| `GLV_learning_micro_gdp_extended_universal_out.py` | Fig. macro trajectory + interaction matrix $A$ |
+
 ---
 
 ## 1. `code/hnn_mass_spring_demo.py`
@@ -153,9 +164,26 @@ Adam, `lr=1e-3`, 2000 epochs. After training, both models are rolled out from IC
 - `neuralode_vs_hnn_side_by_side.png`
 - `mse_vs_time.png`
 
+### Paper reproduction
+
+**Figure:** Introduction, HNN vs Neural ODE on mass–spring (`fig:neural-ode-vs-hnn`).
+
+No CLI flags; hyperparameters are fixed in `TrainingConfig` inside the script (aligned with the paper text):
+
+| Setting | Value |
+|---------|-------|
+| Training samples | 4096 |
+| Batch size | 256 |
+| Adam LR | `1e-3` |
+| Epochs | 2000 |
+| RK4 `dt` / rollout | `0.01` / `1000` |
+| Plot IC radius | `1.2` |
+
 ```bash
-python code/hnn_mass_spring_demo.py
+uv run python code/hnn_mass_spring_demo.py
 ```
+
+The paper PDF `figs/spring-4.pdf` was produced from the side-by-side phase-space panel (`plots/neuralode_vs_hnn_side_by_side.png`); convert or compose manually if you need the exact layout.
 
 ---
 
@@ -216,11 +244,50 @@ $$
 
 Curriculum: horizon grows from `horizon_base` by `horizon_increment` every `horizon_step_epochs`. Default training graph: Erdős–Rényi $n=100$, $p=0.05$; truth $\beta=0.4$, $\gamma=0.2$; RK4 $\Delta t=0.1$.
 
-Checkpoints save `phi1`, `phi2`, `adjacency`, `gamma` under `code/experiments/`.
+Checkpoints save `phi1`, `phi2`, `adjacency`, `gamma` under `code/experiments/<exp_name>_<timestamp>/macro_rhs.ckpt`.
+
+### Paper reproduction — training (`epidemic_demo_macro.py`)
+
+**Figure:** Appendix macro SIR training (`fig:macro-sir-training`).
+
+| Parameter | Paper value |
+|-----------|-------------|
+| Graph | Erdős–Rényi $n{=}100$, $p{=}0.05$ |
+| SIR truth | $\beta{=}0.4$, $\gamma{=}0.2$ |
+| Simulation | $t_{\max}{=}30$, $\Delta t{=}0.1$ |
+| Training | 1000 epochs, Adam $\eta{=}10^{-4}$, `clip_grad=10` |
+| MLP $\phi_1,\phi_2$ | `hidden_dim=32`, `num_hidden=3` |
+| Curriculum | `horizon_base=1`, `horizon_increment=1`, every 50 epochs, cap `t_train_max=30` |
+| Regularizers | $\lambda_{\phi_1,\mathrm{axis}}{=}\lambda_{\phi_2,0}{=}1$, warmup 100 epochs |
+| Seed | `7` |
+
+Most values are script defaults; explicit paper command:
 
 ```bash
-python code/epidemic_demo_macro.py --epochs 1000 --exp_name macro_sir
+uv run python code/epidemic_demo_macro.py \
+  --epochs 1000 \
+  --lr 1e-4 \
+  --nodes 100 \
+  --p 0.05 \
+  --beta 0.4 \
+  --gamma 0.2 \
+  --t_max 30 \
+  --dt 0.1 \
+  --hidden_dim 32 \
+  --num_hidden 3 \
+  --horizon_base 1 \
+  --horizon_increment 1 \
+  --horizon_step_epochs 50 \
+  --t_train_max 30 \
+  --clip_grad 10 \
+  --lambda_phi1_axis 1 \
+  --lambda_phi2_zero 1 \
+  --reg_warmup_epochs 100 \
+  --seed 7 \
+  --exp_name macro_sir
 ```
+
+Checkpoint: `code/experiments/macro_sir_<timestamp>/macro_rhs.ckpt` (plus `sir_on_graph_macro_experiment.png` in that folder).
 
 ### Data
 
@@ -234,12 +301,29 @@ Loads a trained checkpoint and evaluates on **new** graphs (different $n,p$) wit
 
 **Intervention (optional):** between `restrict_time` and `restrict_end_time`, a fraction `restrict_drop_fraction` of each node’s outgoing edges is zeroed (`mask_adjacency_per_node`), modeling social distancing while $\phi_1,\phi_2$ stay fixed.
 
+### Paper reproduction — OOS (`epidemic_demo_macro_out_of_sample.py`)
+
+**Figure:** Main-text OOS SIR (`fig:macro-sir-model-out-of-sample`). Uses a **trained** `macro_rhs.ckpt` (from the training command above or your own run). Evaluation ground truth uses $\beta{=}0.3$, $\gamma{=}0.2$ (caption); architecture must match training (`hidden_dim=32`, `num_hidden=3`).
+
+| Panel | Settings |
+|-------|----------|
+| Top | $n{=}150$, $p{=}0.05$, no intervention |
+| Bottom | $n{=}250$, $p{=}0.05$, drop 90% of outgoing links per node for $t \in [1.5,\,10.0]$ |
+
 ```bash
-python code/epidemic_demo_macro_out_of_sample.py \
-  --load_model code/experiments/<run>/macro_rhs.ckpt \
-  --nodes1 150 --nodes2 250 --beta 0.3 --gamma 0.2 \
-  --restrict_time 1.5 --restrict_end_time 10.0 --restrict_drop_fraction 0.9
+uv run python code/epidemic_demo_macro_out_of_sample.py \
+  --load_model code/experiments/macro_sir_<timestamp>/macro_rhs.ckpt \
+  --nodes1 150 --p1 0.05 \
+  --nodes2 250 --p2 0.05 \
+  --beta 0.3 --gamma 0.2 \
+  --t_max 30 --dt 0.1 --seed 7 \
+  --hidden_dim 32 --num_hidden 3 \
+  --restrict_time 1.5 \
+  --restrict_end_time 10.0 \
+  --restrict_drop_fraction 0.9
 ```
+
+Replace `<timestamp>` with your experiment folder name (e.g. `26_09_2025_17:09` in `main.tex`).
 
 ---
 
@@ -270,9 +354,44 @@ $$
 
 Identical synthetic pipeline to `code/epidemic_demo_macro.py`. Use when studying **interpretable functionals** vs fully hard-wired SIR wiring (Appendix functional-learning figures in the paper).
 
+### Paper reproduction
+
+**Figure:** Appendix functional SIR / separate learning rates (`fig:SI-separate-lr-training`). Same graph and SIR simulation as section 2; $F$ is fixed to $-\psi_1$, $G,H$ learned with higher LR; conservation penalty $\lambda_{\mathrm{cons}}{=}10$.
+
+| Parameter | Paper / appendix text |
+|-----------|------------------------|
+| Graph & SIR | $n{=}100$, $p{=}0.05$, $\beta{=}0.4$, $\gamma{=}0.2$, $t_{\max}{=}30$, $\Delta t{=}0.1$ |
+| Epochs | 700 |
+| $\phi_1,\phi_2$ LR | `0.01` |
+| $G,H$ LR | `0.1` (`--lr_coeff_G`, `--lr_coeff_H`) |
+| Curriculum | start $t{=}1$, $+1$ every **10** epochs (`horizon_step_epochs=10`) |
+| $\lambda_{\mathrm{cons}}$ | 10 |
+| MLP | `hidden_dim=32`, `num_hidden=3` |
+
 ```bash
-python code/epidemic_demo_macro_functionals.py --epochs 1000 --pretrain_coefficients
+uv run python code/epidemic_demo_macro_functionals.py \
+  --epochs 700 \
+  --lr 0.01 \
+  --lr_coeff_G 0.1 \
+  --lr_coeff_H 0.1 \
+  --nodes 100 --p 0.05 \
+  --beta 0.4 --gamma 0.2 \
+  --t_max 30 --dt 0.1 \
+  --hidden_dim 32 --num_hidden 3 \
+  --horizon_base 1 \
+  --horizon_increment 1 \
+  --horizon_step_epochs 10 \
+  --t_train_max 30 \
+  --clip_grad 10 \
+  --lambda_phi1_axis 1 \
+  --lambda_phi2_zero 1 \
+  --lambda_conservation 10 \
+  --reg_warmup_epochs 100 \
+  --seed 7 \
+  --exp_name macro_sir_functionals
 ```
+
+Optional (not required for the published figure): `--pretrain_coefficients` to warm-start $G,H$ on the mass-conservation penalty.
 
 ---
 
@@ -313,9 +432,36 @@ AdamW + optional CyclicLR / CosineAnnealing; curriculum expands by `curriculum_i
 
 **Synthetic** initial vector $X_0 = (100,2,5,1,8)$; no external files. Writes `experiments/GLV_learning_micro_<timestamp>/` (trajectory, $r_i$ convergence plots).
 
+### Paper reproduction
+
+**Figure:** Appendix three-body GLV (`fig:three-body-explicit`). Train only on $t \in [0,50]$; evaluate rollout to $t_{\max}{=}250$.
+
+| Parameter | Paper value |
+|-----------|-------------|
+| Epochs | 500 |
+| LR / schedule | `5e-4`, CyclicLR max `2e-2`, step 75 |
+| `t-max` / `train-end` | 250 / 50 |
+| Curriculum | start 5, $+4$ every 50 epochs, stagnation 50 |
+| Grad clip | 2.0 |
+
 ```bash
-python code/GLV_learning_micro_explicit.py --epochs 500 --train-end 50 --t-max 250
+uv run python code/GLV_learning_micro_explicit.py \
+  --device cpu \
+  --epochs 500 \
+  --lr 5e-4 \
+  --cyclical-max-lr 2e-2 \
+  --cyclical-step 75 \
+  --t-max 250 \
+  --train-end 50 \
+  --curriculum-start 5 \
+  --curriculum-increment 4 \
+  --curriculum-period 50 \
+  --grad-clip 2.0 \
+  --stagnation-epochs 50 \
+  --exp-prefix GLV_learning_micro
 ```
+
+Outputs: `experiments/GLV_learning_micro_<timestamp>/trajectory.png`, `r_progress.png` (copy to `figs/glv_trajectory.png`, `figs/glv_r_progress.png` for the paper if needed).
 
 ---
 
@@ -341,7 +487,7 @@ $$
 h_{\ell+1} = \gamma_\ell(e_i) \odot h_\ell + \beta_\ell(e_i).
 $$
 
-$\beta$ (interaction exponent) is learned via $\sigma(\texttt{interaction\_beta\_raw})$.
+The interaction exponent $\beta$ is learned as $\sigma(z)$, where $z$ is the trainable scalar `interaction_beta_raw` in the model.
 
 ### Model
 
@@ -369,14 +515,43 @@ Optional **teacher-forcing pretrain** matches finite-difference targets of $(\do
 - GDP normalized by 1995 level; top `--top-n` economies by GDP at `--end-year`.
 - Bundled raw tables also under `data_cache/` and `data/gdp_fixed_1970_2023.json`.
 
+### Paper reproduction
+
+**Figure:** Main-text macro GDP + $A$ (`fig:macro-traj-interaction`). Train on years before 2021; plot through 2024 (holdout from 2021). Command matches `main.tex`.
+
+| Parameter | Paper value |
+|-----------|-------------|
+| Data | 1995–2024, top 10 economies |
+| Holdout | `--train-cut-year 2021` |
+| Epochs / RK4 | 500 / `steps=1` per year |
+| LR | `5e-4`, cyclical max `2e-3`, step 75 |
+| MLP | `hidden-dim 8`, `num-hidden 2`, `--phi-normalize-input` |
+| Pretrain | 500 epochs, batch 256, lr `1e-3` |
+| Interaction | warmup 25, ramp 50, $\lambda_A=10^{-5}$, `\|A\| \leq 0.6` |
+| Curriculum | start 5 years, $+4$ every 10 epochs |
+
 ```bash
-python code/GLV_learning_micro_gdp_extended_universal_out.py \
-  --device cpu --start-year 1995 --end-year 2024 --top-n 10 \
-  --train-cut-year 2021 --epochs 500 \
-  --macro-csv data_cache/macro_dataset_kalman_processed.csv
+uv run python code/GLV_learning_micro_gdp_extended_universal_out.py \
+  --device cpu \
+  --macro-csv data_cache/macro_dataset_kalman_processed.csv \
+  --start-year 1995 --end-year 2024 --top-n 10 \
+  --train-cut-year 2021 \
+  --epochs 500 --steps 1 \
+  --lr 5e-4 \
+  --cyclical-max-lr 2e-3 --cyclical-step 75 \
+  --weight-decay 1e-4 --grad-clip 2.0 \
+  --curriculum-start 5 --curriculum-increment 4 --curriculum-period 10 \
+  --stagnation-epochs 50 \
+  --hidden-dim 8 --num-hidden 2 --phi-normalize-input \
+  --pretrain-epochs 500 --pretrain-batch-size 256 --pretrain-lr 1e-3 \
+  --relative-eps 1e-2 \
+  --interaction-warmup-epochs 25 --interaction-ramp-epochs 50 \
+  --lambda-a 1e-5 --a-max-abs 0.6 --interaction-gain 1.0 \
+  --exp-prefix GLV_learning_micro_gdp_extended_out_run \
+  --preview-interval 50
 ```
 
-Outputs: `experiments/GLV_learning_micro_gdp_extended_<timestamp>/` (`trajectory.png`, `A_matrix.png`, `beta_history.png`, `command.txt`).
+Outputs: `experiments/GLV_learning_micro_gdp_extended_out_run_<timestamp>/` (`trajectory.png`, `A_matrix.png`, `beta_history.png`, `command.txt`). Copy figures to `figs/macro_trajectory.png` and `figs/macro_A_matrix.png` for LaTeX if needed.
 
 ---
 
