@@ -1,0 +1,12 @@
+# Top-level dependencies (also declared in pyproject.toml).
+# Prefer: uv sync
+# Or:    uv pip install -r requirements.txt
+numpy>=1.24
+matplotlib>=3.7
+torch>=2.2
+tqdm>=4.66
+networkx>=3.0
+pandas>=2.0
+pandas-datareader>=0.10
+scipy>=1.10
+torch-geometric>=2.7

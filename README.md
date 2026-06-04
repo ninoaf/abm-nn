@@ -11,74 +11,140 @@ LaTeX source: [`main.tex`](main.tex).
 
 ---
 
-## Requirements
+## Installation
 
-- Python 3.10+
-- `torch`, `numpy`, `matplotlib`, `tqdm`
-- `pandas` (macro GLV scripts)
-- `networkx` (epidemic graph generation and layouts)
+**Python:** 3.13+ (see [`pyproject.toml`](pyproject.toml)).
+
+Dependencies are declared in [`pyproject.toml`](pyproject.toml) and locked in [`uv.lock`](uv.lock). Top-level pins are also listed in [`requirements.txt`](requirements.txt); fully pinned versions are in [`requirements-lock.txt`](requirements-lock.txt).
+
+| Package | Used for |
+|---------|----------|
+| `torch` | Neural ODEs, HNN, epidemic & GLV training |
+| `torch-geometric` | Graph baselines / extensions |
+| `numpy`, `scipy` | Simulation & numerics |
+| `matplotlib`, `tqdm` | Plots & training progress |
+| `pandas`, `pandas-datareader` | Macro GDP case study |
+| `networkx` | Epidemic graph generation & layouts |
+
+### Recommended: [uv](https://docs.astral.sh/uv/)
+
+[uv](https://docs.astral.sh/uv/) installs the locked environment from `uv.lock` (reproducible across machines).
 
 ```bash
-pip install torch numpy matplotlib tqdm pandas networkx
+# Install uv (macOS / Linux)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# From the repository root: create .venv and install all dependencies
+uv sync
+
+# Run scripts with the project interpreter
+uv run python code/hnn_mass_spring_demo.py
 ```
 
-**Note:** The epidemic scripts import `epidemic_demo_micro` (`generate_erdos_renyi_adjacency_networkx`, `simulate_sir_on_graph`). That module is **not** in this repository; add it locally (or vendor it) before running `epidemic_demo_macro*.py`.
+After `uv sync`, activate the venv if you prefer a plain `python` command:
+
+```bash
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python code/epidemic_demo_macro.py --epochs 1000 --exp_name macro_sir
+```
+
+### Alternatives (pip)
+
+If you do not use uv:
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt          # minimum versions (matches pyproject.toml)
+# pip install -r requirements-lock.txt   # exact pins (closest to uv.lock)
+```
+
+With uv but without syncing the whole project:
+
+```bash
+uv venv
+uv pip install -r requirements.txt
+# uv pip install -r requirements-lock.txt
+```
+
+**PyTorch note:** `torch` wheels are platform-specific. If `uv sync` or pip fails on your OS/CUDA setup, install PyTorch from [pytorch.org](https://pytorch.org/get-started/locally/) first, then run `uv sync` again or install the remaining requirements.
+
+**Note:** The epidemic scripts import `epidemic_demo_micro` (`generate_erdos_renyi_adjacency_networkx`, `simulate_sir_on_graph`). Place that module alongside the other scripts under `code/` (it is **not** bundled in this repo).
+
+### Running scripts
+
+Run from the **repository root** so paths to `data/` and `data_cache/` resolve correctly:
+
+```bash
+uv run python code/<script>.py [args...]
+# or, with .venv activated:  python code/<script>.py [args...]
+```
+
+Artifacts are written relative to the working directory or script location:
+
+| Output | Typical location |
+|--------|------------------|
+| HNN figures | `plots/` (repo root) |
+| Epidemic training / OOS | `code/experiments/` |
+| GLV runs | `experiments/` (repo root) |
 
 ---
 
-## Root scripts (overview)
+## Scripts in `code/` (overview)
 
 | Script | Role |
 |--------|------|
-| `hnn_mass_spring_demo.py` | HNN vs unconstrained Neural ODE on a mass–spring system |
-| `epidemic_demo_macro.py` | Train ABM-informed SIR RHS from aggregate curves only |
-| `epidemic_demo_macro_out_of_sample.py` | Evaluate a saved macro model on new graphs / interventions |
-| `epidemic_demo_macro_functionals.py` | Same as macro training, with learnable \(F,G,H\) functionals |
-| `GLV_learning_micro_explicit.py` | Recover explicit GLV growth rates (Three-Body case study) |
-| `GLV_learning_micro_gdp_extended_universal_out.py` | Shared-parameter GLV + macro latent ODE on real GDP data |
+| [`code/hnn_mass_spring_demo.py`](code/hnn_mass_spring_demo.py) | HNN vs unconstrained Neural ODE on a mass–spring system |
+| [`code/epidemic_demo_macro.py`](code/epidemic_demo_macro.py) | Train ABM-informed SIR RHS from aggregate curves only |
+| [`code/epidemic_demo_macro_out_of_sample.py`](code/epidemic_demo_macro_out_of_sample.py) | Evaluate a saved macro model on new graphs / interventions |
+| [`code/epidemic_demo_macro_functionals.py`](code/epidemic_demo_macro_functionals.py) | Same as macro training, with learnable $F,G,H$ functionals |
+| [`code/GLV_learning_micro_explicit.py`](code/GLV_learning_micro_explicit.py) | Recover explicit GLV growth rates (Three-Body case study) |
+| [`code/GLV_learning_micro_gdp_extended_universal_out.py`](code/GLV_learning_micro_gdp_extended_universal_out.py) | Shared-parameter GLV + macro latent ODE on real GDP data |
 
 ---
 
-## 1. `hnn_mass_spring_demo.py`
+## 1. `code/hnn_mass_spring_demo.py`
 
 Illustrates **structure-preserving** learning (Hamiltonian neural network) versus a **black-box** neural ODE on the same data—motivation for conservation-style biases used later in ABM-informed models (see Fig. neural-ODE vs HNN in the paper).
 
 ### Dynamics
 
-Unit mass, unit spring constant. State \((q,p)\) with Hamiltonian
+Unit mass, unit spring constant. State $(q,p)$ with Hamiltonian
 
-\[
-H(q,p) = \tfrac{1}{2}(q^2 + p^2).
-\]
+$$
+H(q,p) = \frac{1}{2}(q^2 + p^2).
+$$
 
 Hamilton’s equations:
 
-\[
+$$
 \dot{q} = \frac{\partial H}{\partial p} = p, \qquad
 \dot{p} = -\frac{\partial H}{\partial q} = -q.
-\]
+$$
 
 Trajectories are circles in phase space (energy conserved).
 
 ### Model
 
 - **Ground truth:** analytic RHS above; integration with RK4 (`dt=0.01`, rollout up to `t=1000`).
-- **HNN:** MLP \(H_\theta(q,p)\); derivatives via autograd:
-  \[
-  \dot{q} = \frac{\partial H_\theta}{\partial p}, \quad
-  \dot{p} = -\frac{\partial H_\theta}{\partial q}.
-  \]
-- **Neural ODE baseline:** MLP directly predicts \((\dot{q},\dot{p})\) (same architecture width, no Hamiltonian structure).
+- **HNN:** MLP $H_\theta(q,p)$; derivatives via autograd:
+
+$$
+\dot{q} = \frac{\partial H_\theta}{\partial p}, \quad
+\dot{p} = -\frac{\partial H_\theta}{\partial q}.
+$$
+
+- **Neural ODE baseline:** MLP directly predicts $(\dot{q},\dot{p})$ (same architecture width, no Hamiltonian structure).
 
 ### Learning
 
-Supervised **derivative matching** on \(4096\) samples \((q,p)\) with \(r \sim \mathcal{U}(0.2,2)\), \(\theta \sim \mathcal{U}(0,2\pi)\):
+Supervised **derivative matching** on $4096$ samples $(q,p)$ with $r \sim \mathrm{Uniform}(0.2,2)$, $\theta \sim \mathrm{Uniform}(0,2\pi)$:
 
-\[
-\mathcal{L} = \frac{1}{N}\sum_{k=1}^{N} \big\| f_\theta(q_k,p_k) - (\dot{q}_k,\dot{p}_k)_{\text{true}} \big\|_2^2.
-\]
+$$
+\mathcal{L} = \frac{1}{N}\sum_{k=1}^{N} \left\| f_\theta(q_k,p_k) - (\dot{q}_k,\dot{p}_k)_{\mathrm{true}} \right\|_2^2.
+$$
 
-Adam, `lr=10^{-3}`, 2000 epochs. After training, both models are rolled out from ICs on a circle \(r=1.2\).
+Adam, `lr=1e-3`, 2000 epochs. After training, both models are rolled out from ICs on a circle $r=1.2$.
 
 ### Data
 
@@ -88,71 +154,72 @@ Adam, `lr=10^{-3}`, 2000 epochs. After training, both models are rolled out from
 - `mse_vs_time.png`
 
 ```bash
-python hnn_mass_spring_demo.py
+python code/hnn_mass_spring_demo.py
 ```
 
 ---
 
-## 2. `epidemic_demo_macro.py` and `epidemic_demo_macro_out_of_sample.py`
+## 2. `code/epidemic_demo_macro.py` and `code/epidemic_demo_macro_out_of_sample.py`
 
-**Case study 2 (contagion):** learn node-level SIR dynamics on a graph while observing only **aggregated** compartment sums \(s(t)=\sum_i S_i\), \(i(t)=\sum_i I_i\), \(r(t)=\sum_i R_i\).
+**Case study 2 (contagion):** learn node-level SIR dynamics on a graph while observing only **aggregated** compartment sums $s(t)=\sum_i S_i$, $i(t)=\sum_i I_i$, $r(t)=\sum_i R_i$.
 
 ### Dynamics (ground truth)
 
-On adjacency \(A\), per-node SIR with rates \(\beta,\gamma\):
+On adjacency $A$, per-node SIR with rates $\beta,\gamma$:
 
-\[
+$$
 \dot{S}_i = -\sum_j \beta A_{ij} S_i I_j, \qquad
 \dot{I}_i = \sum_j \beta A_{ij} S_i I_j - \gamma I_i, \qquad
 \dot{R}_i = \gamma I_i.
-\]
+$$
 
-Each node obeys **mass conservation** \(\dot{S}_i+\dot{I}_i+\dot{R}_i=0\); with \(S_i+I_i+R_i=1\) initially, states stay on the probability simplex.
+Each node obeys **mass conservation** $\dot{S}_i+\dot{I}_i+\dot{R}_i=0$; with $S_i+I_i+R_i=1$ initially, states stay on the probability simplex.
 
-### Model (`GraphRHSNet` in `epidemic_demo_macro.py`)
+### Model (`GraphRHSNet` in `code/epidemic_demo_macro.py`)
 
-ABM-informed decomposition with **hard-wired** functionals (paper Eqs. for \(F,G,H\)):
+ABM-informed decomposition with **hard-wired** functionals (paper Eqs. for $F,G,H$):
 
-\[
-\psi_1^{(i)} = \sum_{j: A_{ij}>0} \phi_1(S_i, I_j), \qquad
+$$
+\psi_1^{(i)} = \sum_{j:\, A_{ij}>0} \phi_1(S_i, I_j), \qquad
 \phi_2^{(i)} = \phi_2(I_i),
-\]
+$$
 
-\[
+$$
 \dot{S}_i = -\psi_1^{(i)}, \quad
 \dot{I}_i = \psi_1^{(i)} - \phi_2^{(i)}, \quad
 \dot{R}_i = \phi_2^{(i)}.
-\]
+$$
 
-\(\phi_1:\mathbb{R}^2\to\mathbb{R}_{\ge 0}\) and \(\phi_2:\mathbb{R}\to\mathbb{R}_{\ge 0}\) are small MLPs (LeakyReLU hidden, ReLU output). So \(\dot{S}_i+\dot{I}_i+\dot{R}_i=0\) by construction. Simulation uses differentiable RK4; after each step, \(S,I,R\) are clamped to \([0,1]\) and renormalized per node.
+$\phi_1:\mathbb{R}^2 \to \mathbb{R}_{\geq 0}$ and $\phi_2:\mathbb{R} \to \mathbb{R}_{\geq 0}$ are small MLPs (LeakyReLU hidden, ReLU output). So $\dot{S}_i+\dot{I}_i+\dot{R}_i=0$ by construction. Simulation uses differentiable RK4; after each step, $S,I,R$ are clamped to $[0,1]$ and renormalized per node.
 
-### Learning (`epidemic_demo_macro.py`)
+### Learning (`code/epidemic_demo_macro.py`)
 
-**Macro loss** (normalized L1 on aggregate curves over curriculum horizon \(t_{\text{curr}}\)):
+**Macro loss** (normalized L1 on aggregate curves over curriculum horizon $t_{\mathrm{curr}}$):
 
-\[
-\mathcal{L}_{\text{macro}} = \frac{1}{L \cdot N}\sum_{t\le t_{\text{curr}}} \Big(
+$$
+\mathcal{L}_{\mathrm{macro}} = \frac{1}{L N}\sum_{t \leq t_{\mathrm{curr}}}
+\left(
 |s(t)-\tilde{s}(t)| + |i(t)-\tilde{i}(t)| + |r(t)-\tilde{r}(t)|
-\Big).
-\]
+\right).
+$$
 
 **Regularizers** (optional after warmup):
 
-\[
-\mathcal{R}_{\phi_1,\text{axis}} = \mathbb{E}_{S\sim\mathcal{U}[0,1]}\big[|\phi_1(S,0)|\big], \qquad
-\mathcal{R}_{\phi_2,\text{origin}} = |\phi_2(0)|,
-\]
+$$
+\mathcal{R}_{\phi_1,\mathrm{axis}} = \mathbb{E}_{S \sim \mathrm{Uniform}[0,1]}\left[|\phi_1(S,0)|\right], \qquad
+\mathcal{R}_{\phi_2,\mathrm{origin}} = |\phi_2(0)|,
+$$
 
-\[
-\mathcal{L} = \mathcal{L}_{\text{macro}} + \lambda_1 \mathcal{R}_{\phi_1,\text{axis}} + \lambda_2 \mathcal{R}_{\phi_2,\text{origin}}.
-\]
+$$
+\mathcal{L} = \mathcal{L}_{\mathrm{macro}} + \lambda_1 \mathcal{R}_{\phi_1,\mathrm{axis}} + \lambda_2 \mathcal{R}_{\phi_2,\mathrm{origin}}.
+$$
 
-Curriculum: horizon grows from `horizon_base` by `horizon_increment` every `horizon_step_epochs`. Default training graph: Erdős–Rényi \(n=100\), \(p=0.05\); truth \(\beta=0.4\), \(\gamma=0.2\); RK4 \(\Delta t=0.1\).
+Curriculum: horizon grows from `horizon_base` by `horizon_increment` every `horizon_step_epochs`. Default training graph: Erdős–Rényi $n=100$, $p=0.05$; truth $\beta=0.4$, $\gamma=0.2$; RK4 $\Delta t=0.1$.
 
-Checkpoints save `phi1`, `phi2`, `adjacency`, `gamma` under `experiments/`.
+Checkpoints save `phi1`, `phi2`, `adjacency`, `gamma` under `code/experiments/`.
 
 ```bash
-python epidemic_demo_macro.py --epochs 1000 --exp_name macro_sir
+python code/epidemic_demo_macro.py --epochs 1000 --exp_name macro_sir
 ```
 
 ### Data
@@ -161,119 +228,120 @@ python epidemic_demo_macro.py --epochs 1000 --exp_name macro_sir
 - **Initial conditions:** up to 50 infected nodes in the largest connected component; remainder susceptible.
 - **No external dataset files** for training.
 
-### `epidemic_demo_macro_out_of_sample.py`
+### `code/epidemic_demo_macro_out_of_sample.py`
 
-Loads a trained checkpoint and evaluates on **new** graphs (different \(n,p\)) without retraining. Compares learned rollout \(\tilde{s},\tilde{i},\tilde{r}\) to ground-truth micro simulation.
+Loads a trained checkpoint and evaluates on **new** graphs (different $n,p$) without retraining. Compares learned rollout $\tilde{s},\tilde{i},\tilde{r}$ to ground-truth micro simulation.
 
-**Intervention (optional):** between `restrict_time` and `restrict_end_time`, a fraction `restrict_drop_fraction` of each node’s outgoing edges is zeroed (`mask_adjacency_per_node`), modeling social distancing while \(\phi_1,\phi_2\) stay fixed.
+**Intervention (optional):** between `restrict_time` and `restrict_end_time`, a fraction `restrict_drop_fraction` of each node’s outgoing edges is zeroed (`mask_adjacency_per_node`), modeling social distancing while $\phi_1,\phi_2$ stay fixed.
 
 ```bash
-python epidemic_demo_macro_out_of_sample.py \
-  --load_model experiments/<run>/macro_rhs.ckpt \
+python code/epidemic_demo_macro_out_of_sample.py \
+  --load_model code/experiments/<run>/macro_rhs.ckpt \
   --nodes1 150 --nodes2 250 --beta 0.3 --gamma 0.2 \
   --restrict_time 1.5 --restrict_end_time 10.0 --restrict_drop_fraction 0.9
 ```
 
 ---
 
-## 3. `epidemic_demo_macro_functionals.py`
+## 3. `code/epidemic_demo_macro_functionals.py`
 
-Same epidemic setup as §2, but the map from \((\psi_1,\phi_2)\) to \((\dot{S},\dot{I},\dot{R})\) uses **learnable linear functionals** \(F,G,H\) on the pair \((\psi_1^{(i)}, \phi_2^{(i)})\):
+Same epidemic setup as section 2, but the map from $(\psi_1,\phi_2)$ to $(\dot{S},\dot{I},\dot{R})$ uses **learnable linear functionals** $F,G,H$ on the pair $(\psi_1^{(i)}, \phi_2^{(i)})$:
 
-\[
+$$
 \dot{S}_i = F(\psi_1^{(i)}, \phi_2^{(i)}), \quad
 \dot{I}_i = G(\psi_1^{(i)}, \phi_2^{(i)}), \quad
 \dot{R}_i = H(\psi_1^{(i)}, \phi_2^{(i)}),
-\]
+$$
 
-implemented as `nn.Linear(2,1)` coefficients. \(F\) is **initialized and frozen** to match SIR structure \(F=-\psi_1\); \(G,H\) can be pretrained and/or learned with **separate learning rates** from \(\phi_1,\phi_2\).
+implemented as `nn.Linear(2,1)` coefficients. $F$ is **initialized and frozen** to match SIR structure $F=-\psi_1$; $G,H$ can be pretrained and/or learned with **separate learning rates** from $\phi_1,\phi_2$.
 
 ### Conservation during training
 
 Penalty on violation of node-wise mass balance in the predicted RHS:
 
-\[
-\mathcal{R}_{\text{cons}} = \mathbb{E}\Big[\big|\dot{S}_i+\dot{I}_i+\dot{R}_i\big|\Big], \qquad
-\mathcal{L} = \mathcal{L}_{\text{macro}} + \lambda_{\text{cons}}\mathcal{R}_{\text{cons}} + \cdots
-\]
+$$
+\mathcal{R}_{\mathrm{cons}} = \mathbb{E}\left[\left|\dot{S}_i+\dot{I}_i+\dot{R}_i\right|\right], \qquad
+\mathcal{L} = \mathcal{L}_{\mathrm{macro}} + \lambda_{\mathrm{cons}}\mathcal{R}_{\mathrm{cons}} + \cdots
+$$
 
-(plus the same \(\phi_1,\phi_2\) axis/origin regularizers as §2). Optional **stage-1 pretrain** fits \(F,G,H\) on random states to minimize \(\mathcal{R}_{\text{cons}}\) before macro trajectory loss.
+(plus the same $\phi_1,\phi_2$ axis/origin regularizers as section 2). Optional **stage-1 pretrain** fits $F,G,H$ on random states to minimize $\mathcal{R}_{\mathrm{cons}}$ before macro trajectory loss.
 
 ### Data & usage
 
-Identical synthetic pipeline to `epidemic_demo_macro.py`. Use when studying **interpretable functionals** vs fully hard-wired SIR wiring (Appendix functional-learning figures in the paper).
+Identical synthetic pipeline to `code/epidemic_demo_macro.py`. Use when studying **interpretable functionals** vs fully hard-wired SIR wiring (Appendix functional-learning figures in the paper).
 
 ```bash
-python epidemic_demo_macro_functionals.py --epochs 1000 --pretrain_coefficients
+python code/epidemic_demo_macro_functionals.py --epochs 1000 --pretrain_coefficients
 ```
 
 ---
 
-## 4. `GLV_learning_micro_explicit.py`
+## 4. `code/GLV_learning_micro_explicit.py`
 
-**Case study 1 (analytical GLV recovery):** “Three-Body” faction capacities with known \(r_i\), \(A_{ij}\), and exogenous schedules \(S_i(t)\), \(\tau_i(t)\).
+**Case study 1 (analytical GLV recovery):** “Three-Body” faction capacities with known $r_i$, $A_{ij}$, and exogenous schedules $S_i(t)$, $\tau_i(t)$.
 
 ### Dynamics
 
-\[
-\frac{dX_i}{dt} = X_i\big(r_i S_i(t) + \tau_i(t)\big) + X_i \sum_{j=1}^{N} a_{ij} X_j.
-\]
+$$
+\frac{dX_i}{dt} = X_i\left(r_i S_i(t) + \tau_i(t)\right) + X_i \sum_{j=1}^{N} a_{ij} X_j.
+$$
 
-Five factions; piecewise \(S(t)\) (Sophon lock) and \(\tau(t)\) (regime shocks) defined in-script (`get_S`, `get_tau`). Ground truth integrated with RK4; states clamped to \(\ge 0\).
+Five factions; piecewise $S(t)$ (Sophon lock) and $\tau(t)$ (regime shocks) defined in-script (`get_S`, `get_tau`). Ground truth integrated with RK4; states clamped to $\geq 0$.
 
 ### Model
 
 ABM-informed split matching the paper:
 
-\[
-\dot{x}_i = \underbrace{\phi_{\text{self}}(x_i; r_i, S_i,\tau_i)}_{\text{learned}} + \underbrace{\sum_j a_{ij}\, \phi_{\text{pair}}(x_i,x_j)}_{\text{fixed } \phi_{\text{pair}}=x_i x_j},
-\]
+$$
+\dot{x}_i = \phi_{\mathrm{self}}(x_i;\, r_i, S_i,\tau_i) + \sum_j a_{ij}\, \phi_{\mathrm{pair}}(x_i,x_j),
+\qquad \phi_{\mathrm{pair}}(x_i,x_j) = x_i x_j \ \text{(fixed)}.
+$$
 
-with \(\phi_{\text{self}}(x_i) = x_i \exp(\log r_i)\, S_i(t) + x_i \tau_i(t)\) (learnable \(\log r_i\); \(A\) fixed from ground truth).
+with $\phi_{\mathrm{self}}(x_i) = x_i \exp(\log r_i)\, S_i(t) + x_i \tau_i(t)$ (learnable $\log r_i$; $A$ fixed from ground truth).
 
 ### Learning
 
-Trajectory L1 on a **curriculum window** \(t \in [0, T_{\text{curr}}]\), \(T_{\text{curr}}\le\) `train_end` (default 50 years) while evaluation runs to `t_max` (e.g. 250):
+Trajectory L1 on a **curriculum window** $t \in [0, T_{\mathrm{curr}}]$, $T_{\mathrm{curr}} \leq$ `train_end` (default 50 years) while evaluation runs to `t_max` (e.g. 250):
 
-\[
-\mathcal{L} = \frac{1}{NT}\sum_{i,t\le T_{\text{curr}}} |X_i^{\text{pred}}(t) - X_i^{\text{true}}(t)|.
-\]
+$$
+\mathcal{L} = \frac{1}{NT}\sum_{i,\, t \leq T_{\mathrm{curr}}} \left|X_i^{\mathrm{pred}}(t) - X_i^{\mathrm{true}}(t)\right|.
+$$
 
 AdamW + optional CyclicLR / CosineAnnealing; curriculum expands by `curriculum_increment` on schedule or stagnation.
 
 ### Data
 
-**Synthetic** initial vector \(X_0 = (100,2,5,1,8)\); no external files. Writes `experiments/GLV_learning_micro_<timestamp>/` (trajectory, \(r_i\) convergence plots).
+**Synthetic** initial vector $X_0 = (100,2,5,1,8)$; no external files. Writes `experiments/GLV_learning_micro_<timestamp>/` (trajectory, $r_i$ convergence plots).
 
 ```bash
-python GLV_learning_micro_explicit.py --epochs 500 --train-end 50 --t-max 250
+python code/GLV_learning_micro_explicit.py --epochs 500 --train-end 50 --t-max 250
 ```
 
 ---
 
-## 5. `GLV_learning_micro_gdp_extended_universal_out.py`
+## 5. `code/GLV_learning_micro_gdp_extended_universal_out.py`
 
-**Case study 3 (macroeconomics):** coupled GDP and six macro channels per country; shared neural maps + learned interaction matrix \(A\); **out-of-sample** years after `train_cut_year`.
+**Case study 3 (macroeconomics):** coupled GDP and six macro channels per country; shared neural maps + learned interaction matrix $A$; **out-of-sample** years after `train_cut_year`.
 
 ### Dynamics (conceptual)
 
-For each country \(i\), normalized GDP \(x_i(t)\) and latent macro vector \(y_i(t)\in\mathbb{R}^6\):
+For each country $i$, normalized GDP $x_i(t)$ and latent macro vector $y_i(t) \in \mathbb{R}^6$:
 
-\[
+$$
 \dot{x}_i = \phi_x(x_i, y_i, e_i) + \sum_j A_{ij}\, x_i\, (\max(x_j,0)+\varepsilon)^{\beta},
-\]
+$$
 
-\[
+$$
 \dot{y}_i = \phi_y(y_i, x_i, e_i),
-\]
+$$
 
-with \(\phi_x(x) = x\,\phi_g(\cdot) + \phi_d(\cdot)\) (growth + drift MLPs) and **FiLM** adapters on hidden layers from country embedding \(e_i\):
+with $\phi_x(x) = x\,\phi_g(\cdot) + \phi_d(\cdot)$ (growth + drift MLPs) and **FiLM** adapters on hidden layers from country embedding $e_i$:
 
-\[
-h_{\ell+1} = \gamma_\ell(e_i)\odot h_\ell + \beta_\ell(e_i).
-\]
+$$
+h_{\ell+1} = \gamma_\ell(e_i) \odot h_\ell + \beta_\ell(e_i).
+$$
 
-\(\beta\) (interaction exponent) is learned via \(\sigma(\text{interaction\_beta\_raw})\).
+$\beta$ (interaction exponent) is learned via $\sigma(\texttt{interaction\_beta\_raw})$.
 
 ### Model
 
@@ -283,16 +351,16 @@ h_{\ell+1} = \gamma_\ell(e_i)\odot h_\ell + \beta_\ell(e_i).
 
 Train only on years **strictly before** `--train-cut-year` (paper: 1995–2020 train, 2021+ holdout). Loss on rolled-out trajectories:
 
-\[
-\mathcal{L}_{\text{GDP}} = \mathbb{E}_{i,t}\frac{| \hat{x}_{i,t} x^{\text{base}}_i - x^{\text{true}}_{i,t} x^{\text{base}}_i |}{|x^{\text{true}}_{i,t} x^{\text{base}}_i| + \varepsilon}, \qquad
+$$
+\mathcal{L}_{\mathrm{GDP}} = \mathbb{E}_{i,t}\frac{\left| \hat{x}_{i,t} x^{\mathrm{base}}_i - x^{\mathrm{true}}_{i,t} x^{\mathrm{base}}_i \right|}{\left|x^{\mathrm{true}}_{i,t} x^{\mathrm{base}}_i\right| + \varepsilon}, \qquad
 \mathcal{L}_{y} = \mathrm{MSE}(\hat{y}, y),
-\]
+$$
 
-\[
-\mathcal{L} = \mathcal{L}_{\text{GDP}} + w_y \mathcal{L}_{y} + \lambda_A \|A\|_2^2.
-\]
+$$
+\mathcal{L} = \mathcal{L}_{\mathrm{GDP}} + w_y \mathcal{L}_{y} + \lambda_A \|A\|_2^2.
+$$
 
-Optional **teacher-forcing pretrain** matches finite-difference targets of \((\dot{x},\dot{y})\) from data. Interaction term ramps in after `interaction_warmup_epochs`; curriculum on number of time steps mirrors the GLV script.
+Optional **teacher-forcing pretrain** matches finite-difference targets of $(\dot{x},\dot{y})$ from data. Interaction term ramps in after `interaction_warmup_epochs`; curriculum on number of time steps mirrors the GLV script.
 
 ### Data
 
@@ -302,9 +370,10 @@ Optional **teacher-forcing pretrain** matches finite-difference targets of \((\d
 - Bundled raw tables also under `data_cache/` and `data/gdp_fixed_1970_2023.json`.
 
 ```bash
-python GLV_learning_micro_gdp_extended_universal_out.py \
+python code/GLV_learning_micro_gdp_extended_universal_out.py \
   --device cpu --start-year 1995 --end-year 2024 --top-n 10 \
-  --train-cut-year 2021 --epochs 500 --macro-csv data_cache/macro_dataset_kalman_processed.csv
+  --train-cut-year 2021 --epochs 500 \
+  --macro-csv data_cache/macro_dataset_kalman_processed.csv
 ```
 
 Outputs: `experiments/GLV_learning_micro_gdp_extended_<timestamp>/` (`trajectory.png`, `A_matrix.png`, `beta_history.png`, `command.txt`).
@@ -315,16 +384,24 @@ Outputs: `experiments/GLV_learning_micro_gdp_extended_<timestamp>/` (`trajectory
 
 ```
 abm-nn/
+├── README.md
+├── pyproject.toml                    # Project metadata & dependencies (source of truth)
+├── uv.lock                           # Locked versions for uv sync
+├── requirements.txt                  # Pip-friendly dependency list
+├── requirements-lock.txt             # Fully pinned pip export
 ├── main.tex                          # Paper source
-├── hnn_mass_spring_demo.py
-├── epidemic_demo_macro.py
-├── epidemic_demo_macro_out_of_sample.py
-├── epidemic_demo_macro_functionals.py
-├── GLV_learning_micro_explicit.py
-├── GLV_learning_micro_gdp_extended_universal_out.py
+├── code/                             # Experiment scripts
+│   ├── hnn_mass_spring_demo.py
+│   ├── epidemic_demo_macro.py
+│   ├── epidemic_demo_macro_out_of_sample.py
+│   ├── epidemic_demo_macro_functionals.py
+│   ├── GLV_learning_micro_explicit.py
+│   ├── GLV_learning_micro_gdp_extended_universal_out.py
+│   └── experiments/                  # Epidemic checkpoints & plots (created at run time)
 ├── data_cache/                       # Macro time series (CSV)
 ├── data/                             # Additional GDP JSON
-└── experiments/                      # Created at run time (checkpoints, plots)
+├── plots/                            # HNN figures (created at run time)
+└── experiments/                      # GLV runs (created at run time)
 ```
 
 ---

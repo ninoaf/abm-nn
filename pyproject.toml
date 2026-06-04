@@ -1,0 +1,19 @@
+[project]
+name = "abm-nn-private"
+version = "0.1.0"
+description = "Agent-based-model informed neural networks"
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib>=3.7",
+    "networkx>=3.0",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pandas-datareader>=0.10",
+    "scipy>=1.10",
+    "torch>=2.2",
+    "torch-geometric>=2.7",
+    "tqdm>=4.66",
+]
+
+[tool.uv]
+dev-dependencies = []
